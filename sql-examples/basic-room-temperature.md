@@ -1,6 +1,4 @@
-# Flink basic SQL example
-
-
+# Flink basic SQL example - Average room temperature
 
 1. Generate random temperature measurement records and write to a kafka topic
 2. Read the topic and print the average temperature of each room over a 10 second window

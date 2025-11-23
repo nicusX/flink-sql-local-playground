@@ -1,18 +1,19 @@
 # Flink SQL Playground
 
-This project sets up a playground to run experiments with Flink SQL interactively using a completely local setup.
+This project allows you to set up a simple local playground to experiment with Flink SQL (Flink 1.20)
 
-A local Kubernetes cluster runs a Flink cluster in session mode, Flink SQL Gateway, and also a Kafka cluster, Schema Registry.
+A local Kubernetes cluster (Minikube) runs: a Flink cluster in session mode, Flink SQL Gateway, a Kafka cluster, Schema Registry, Kafka UI.
 
-The Flink SQL Gateway is exposed on localhost to allow using the Flink SQL Client locally.
-Kafka UI and Flink UI, are also exposed on localhost, to help with the experimenting.
+You can use Flink SQL CLI to run interactive SQL on the cluster.
 
-The [sql-examples](./sql-examples/) folder contains some examples of SQL jobs.
+Kafka UI and Flink UI are also exposed on localhost, to help with the experimentation.
+
+The [sql-examples](./sql-examples/) folder contains some examples of SQL jobs (WIP).
 
 
 ## Quick Start
 
-1. Verify you meet all [presequisites](#prerequisites)
+1. Verify you meet all [prerequisites](#prerequisites)
 2. Install the required [Helm repositories](#install-helm-repositories)
 3. Run the setup script for [Flink SQL Playground quick setup](#flink-sql-playground-quick-setup)
 4. Start the [Flink SQL Client](#start-flink-sql-client) and start interacting with the cluster
@@ -24,7 +25,7 @@ The [sql-examples](./sql-examples/) folder contains some examples of SQL jobs.
 
 - macOS (for this guide)
 - Homebrew package manager
-- Docker Desktop (for minikube) - must be running with sufficent resource limits (see [Create Kubernetes cluster](#11-create-kubernetes-cluster), below)
+- Docker Desktop (for minikube) - must be running with sufficient resource limits (see [Create Kubernetes cluster](#11-create-kubernetes-cluster), below)
 - Minikube
 - Helm
 - Local installation of a Flink distribution matching the Flink version used in the playground (see [Install Flink Distribution](#install-flink-distribution))
@@ -116,21 +117,21 @@ The playground includes:
 6. Flink Session cluster, with 2 task managers
 7. Flink SQL Gateway
 8. Port-forward for Flink UI, Kafka UI, and SQL Gateway
-9. Opens the minikube dashboard in the browser
 
 **Note**: the script is idempotent. It creates components only if required.
 
 ### Docker Resources
 
-The Minikube cluster requires a minimum amount of resources available to Docker. 
-With the current setup these are: 
-- 5 CPU 
-- 10GiB memory.
+The Minikube cluster requires a minimum amount of resources available to Docker.
+With the current setup these are:
+- 6 CPU
+- 10 GiB memory
 
-Your Docker Desktop resource limits must be higher or equal the resources dedicated to minikube.
+Your Docker Desktop resource limits must be higher than or equal to the resources dedicated to minikube.
+The setup script automatically checks Docker resources before starting Minikube.
 You can check the limits set to Docker with: `docker info | grep -E "CPUs|Total Memory"`
 
-See [Modifying Resource Requirements](#modifying-resource-requirements) to change the resouces dedicated to the various components.
+See [Modifying Resource Requirements](#modifying-resource-requirements) to change the resources dedicated to the various components.
 
 
 ### Minikube Dashboard
@@ -138,7 +139,7 @@ See [Modifying Resource Requirements](#modifying-resource-requirements) to chang
 Open the Minikube K8s Dashboard in the browser:
 
 ```bash
-minikube dasboard
+minikube dashboard
 ```
 
 
@@ -271,15 +272,15 @@ When you modify the custom Flink image (Dockerfile or pom.xml), you need to rebu
 
 This script automates the entire process:
 1. Deletes the session-deployment (Flink cluster) and flink-sql-gateway
-2. Rebuilds the custom Flink image (remove the image chached by minikube, build the image, reload the new image in minikube)
-3. Redeploy session-deployment and flink-sql-gateway, which will use the new image
-5. Restarts the port-forwards for Flink UI and SQL Gateway
+2. Rebuilds the custom Flink image (removes the image cached by minikube, builds the image, reloads the new image in minikube)
+3. Redeploys session-deployment and flink-sql-gateway, which will use the new image
+4. Restarts the port-forwards for Flink UI and SQL Gateway
 
 **Note**: the deployments must be deleted before removing the cached image in minikube
 
 #### 3.1. Timestamp file in the custom image
 
-The image build process adds a file in container with the timestamp of the build: `/opt/flink/modified-YYYYMMDD-HHmmss`.
+The image build process adds a file in the container with the timestamp of the build: `/opt/flink/modified-YYYYMMDD-HHmmss`.
 
 You can verify when the image was last built using:
 
@@ -402,7 +403,7 @@ kubectl logs -l app=flink-sql-gateway
 
 You should see a message like: `Rest endpoint listening at 0.0.0.0:8083`
 
-#### 4.4. Expose SQL Gateway the Host Machine
+#### 4.4. Expose SQL Gateway to the Host Machine
 
 Similarly to what has been done for the Flink UI, the SQL Gateway is exposed to localhost using port-forward.
 
@@ -685,7 +686,7 @@ The Dockerfile uses a **multi-stage build**:
    - Copies Maven-resolved dependencies
    - Creates final Flink image
 
-**Note:** the custom image is rebuild every time you set up the playground (or you run `scripts/build-flink-images.sh`). 
+**Note:** the custom image is rebuilt every time you set up the playground (or you run `scripts/build-flink-image.sh`). 
 
 ### Adding New Dependencies
 
@@ -733,21 +734,21 @@ to rebuild the image and redeploy the SQL Gateway and Session cluster.
 
 ## Modifying Resource Requirements
 
-Minikube requires a minimum amount of resources dedicated to Docker (6 CPU and 10GiB by default).
+Minikube requires a minimum amount of resources dedicated to Docker (6 CPU and 10 GiB by default).
 
-You can modify the dedicated resouces editing the `setup-flink-sql-playground.sh` script.
+You can modify the dedicated resources by editing the `setup-flink-sql-playground.sh` script.
 Make sure you provide enough resources to spin up all the components of the playground.
 
 With the current deployment definitions:
 - Job Manager: (requests=limits) 0.5 CPU, 1024 MiB 
 - 2x Task Managers: (requests=limits) 1 CPU, 2048 MiB **each**
-- 3x Kafka brokers: (requestes|limits) 0.25|0.5 CPU, 512|768 MiB **each**
-- Flink Kubernetes Operator:  actual memory utilization ~1.2GiB (no requests/limits)
-- SQL Gateway: actual memory utilization ~500 MiB, it may varies if planning complex queries (no requests/limits)
+- 3x Kafka brokers: (requests|limits) 0.25|0.5 CPU, 512|768 MiB **each**
+- Flink Kubernetes Operator: actual memory utilization ~1.2 GiB (no requests/limits)
+- SQL Gateway: actual memory utilization ~500 MiB, may vary when planning complex queries (no requests/limits)
 - Kafka UI: actual memory utilization ~500 MiB (no requests/limits)
-- Schema Regisrtry: actual memory utilization ~300 MiB (no requests/limits)
+- Schema Registry: actual memory utilization ~300 MiB (no requests/limits)
 
-**Note**: While the default 6 CPU is slighly overprovisioned, and 10 GiB do not leave much room. 
+**Note**: While the default 6 CPU is slightly overprovisioned, 10 GiB provides limited headroom for active workloads. 
 Reducing the cluster resources may cause some of the Pods to get OOMkilled.
 
 ---
