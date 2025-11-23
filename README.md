@@ -45,7 +45,7 @@ The [sql-examples](./sql-examples/) folder contains some examples of SQL jobs (W
 
 To use the Flink SQL Client from your host machine, you need to have the Flink distribution installed locally and the `FLINK_HOME` environment variable configured.
 
-> ⚠️ **Important:** make sure your local Flink distribution is Flink 1.20.x. The Flink 2.x client or version much earlier than 1.20 may not work with Flink 1.20.3 used in the playground.
+> ⚠️ **Important:** make sure your local Flink distribution is Flink 1.20.x. The Flink SQL client version 2.x or earlier than 1.20 may not work with Flink 1.20.3 used in the playground.
 
 **Download and extract Flink distribution:**
 
@@ -254,45 +254,6 @@ minikube image ls | grep flink-with-dependencies
 
 You should see `docker.io/library/flink-with-dependencies:latest` in the output.
 
-**Note:** If you modify the Dockerfile, simply run the build script again:
-```bash
-./scripts/build-flink-image.sh
-```
-The script always rebuilds to pick up any changes. Docker's build cache ensures this is fast when nothing has changed.
-
-### 3. Rebuilding and Redeploying After Dockerfile Changes
-
-When you modify the custom Flink image (Dockerfile or pom.xml), you need to rebuild the image and redeploy the Flink components to use the updated image.
-
-**Rebuild and redeploy:**
-
-```bash
-./rebuild-flink-image-and-redeploy.sh
-```
-
-This script automates the entire process:
-1. Deletes the session-deployment (Flink cluster) and flink-sql-gateway
-2. Rebuilds the custom Flink image (removes the image cached by minikube, builds the image, reloads the new image in minikube)
-3. Redeploys session-deployment and flink-sql-gateway, which will use the new image
-4. Restarts the port-forwards for Flink UI and SQL Gateway
-
-**Note**: the deployments must be deleted before removing the cached image in minikube
-
-#### 3.1. Timestamp file in the custom image
-
-The image build process adds a file in the container with the timestamp of the build: `/opt/flink/modified-YYYYMMDD-HHmmss`.
-
-You can verify when the image was last built using:
-
-```bash
-kubectl exec deployment/flink-sql-gateway -- sh -c 'ls -lh /opt/flink/modified-*'
-```
-
-or 
-
-```bash
-kubectl exec session-deployment-taskmanager-1-1 -- sh -c 'ls -lh /opt/flink/modified-*'
-```
 
 ### 4. Deploy a Flink Session Cluster with fixed TaskManagers and SQL Gateway
 
@@ -688,7 +649,7 @@ The Dockerfile uses a **multi-stage build**:
 
 **Note:** the custom image is rebuilt every time you set up the playground (or you run `scripts/build-flink-image.sh`). 
 
-### Adding New Dependencies
+### How to Add New Dependencies
 
 #### For Flink Connectors with Uber JARs
 
@@ -725,10 +686,11 @@ For simple JARs without transitive dependencies:
 2. Add a wget command in the appropriate section
 3. Rebuild: `./scripts/build-flink-image.sh`
 
-### Making changes to the custom Docker image
+### Using the new Custom Flink Image
 
 After making any changes to the `pom.xml` or the `Dockerfile` use the `rebuild-flink-image-and-redeploy.sh` script
 to rebuild the image and redeploy the SQL Gateway and Session cluster.
+
 
 ---
 
