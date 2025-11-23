@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Maven build artifacts (not needed in image)
+target/
+
+# Kubernetes configs (not needed in image)
+k8s/
+
+# Scripts (not needed in image)
+*.sh
+
+# Documentation
+README.md
+*.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

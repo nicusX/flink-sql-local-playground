@@ -1,0 +1,5 @@
+/.claude/
+*.code-workspace
+/.env
+/.java-version
+/.DS_Store

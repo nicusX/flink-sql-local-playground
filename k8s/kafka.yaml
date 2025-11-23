@@ -1,0 +1,251 @@
+# Kafka Cluster with KRaft mode
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    app: kafka
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: broker
+    port: 9092
+    targetPort: 9092
+  - name: controller
+    port: 9093
+    targetPort: 9093
+  selector:
+    app: kafka
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  labels:
+    app: kafka
+spec:
+  serviceName: kafka
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      initContainers:
+      - name: kafka-init
+        image: confluentinc/cp-kafka:8.1.0
+        command:
+        - bash
+        - -c
+        - |
+          # Extract node ID from pod name
+          export NODE_ID=${HOSTNAME##*-}
+          echo "Initializing Kafka node ${NODE_ID}"
+
+          # Create full server.properties for this node
+          cat > /config/server.properties <<EOF
+          # Node configuration
+          node.id=${NODE_ID}
+          process.roles=broker,controller
+          controller.quorum.voters=0@kafka-0.kafka.default.svc.cluster.local:9093,1@kafka-1.kafka.default.svc.cluster.local:9093,2@kafka-2.kafka.default.svc.cluster.local:9093
+
+          # Listeners
+          listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          advertised.listeners=PLAINTEXT://${HOSTNAME}.kafka.default.svc.cluster.local:9092
+          controller.listener.names=CONTROLLER
+          listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+          inter.broker.listener.name=PLAINTEXT
+
+          # Log configuration
+          log.dirs=/var/lib/kafka/data
+
+          # Replication settings
+          offsets.topic.replication.factor=3
+          transaction.state.log.replication.factor=3
+          transaction.state.log.min.isr=2
+          default.replication.factor=3
+          min.insync.replicas=2
+
+          # Topic settings
+          auto.create.topics.enable=true
+
+          # Other settings
+          num.network.threads=3
+          num.io.threads=8
+          socket.send.buffer.bytes=102400
+          socket.receive.buffer.bytes=102400
+          socket.request.max.bytes=104857600
+          num.partitions=1
+          num.recovery.threads.per.data.dir=1
+          log.retention.hours=168
+          log.segment.bytes=1073741824
+          log.retention.check.interval.ms=300000
+          EOF
+
+          echo "=== Created server.properties ==="
+          cat /config/server.properties
+          echo "=================================="
+
+          # Check if already formatted
+          if [ ! -f "/var/lib/kafka/data/meta.properties" ]; then
+            echo "Formatting Kafka storage with cluster ID: ${CLUSTER_ID}"
+            /bin/kafka-storage format -t ${CLUSTER_ID} -c /config/server.properties
+            echo "Formatting complete"
+          else
+            echo "Storage already formatted, skipping"
+          fi
+        env:
+        - name: CLUSTER_ID
+          value: "MkU3OEVBNTcwNTJENDM2Qk"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka/data
+        - name: config
+          mountPath: /config
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:8.1.0
+        ports:
+        - containerPort: 9092
+          name: broker
+        - containerPort: 9093
+          name: controller
+        env:
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xmx256M -Xms256M"
+        - name: KAFKA_JVM_PERFORMANCE_OPTS
+          value: "-XX:MetaspaceSize=96m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:G1HeapRegionSize=16M -XX:MinMetaspaceFreeRatio=50 -XX:MaxMetaspaceFreeRatio=80"
+        command:
+        - /bin/kafka-server-start
+        - /config/server.properties
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "768Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka/data
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+  labels:
+    app: kafka-ui
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: kafka-ui
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+  labels:
+    app: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+    spec:
+      containers:
+      - name: kafka-ui
+        image: provectuslabs/kafka-ui:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: KAFKA_CLUSTERS_0_NAME
+          value: "local-kafka"
+        - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+          value: "kafka-0.kafka.default.svc.cluster.local:9092,kafka-1.kafka.default.svc.cluster.local:9092,kafka-2.kafka.default.svc.cluster.local:9092"
+        - name: KAFKA_CLUSTERS_0_SCHEMAREGISTRY
+          value: "http://schemaregistry:8082"
+        - name: KAFKA_CLUSTERS_0_SCHEMA_REGISTRY
+          value: "http://schemaregistry:8082"
+        - name: DYNAMIC_CONFIG_ENABLED
+          value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: schemaregistry
+  labels:
+    app: schema-registry
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8082
+    targetPort: 8082
+  selector:
+    app: schema-registry
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-registry
+  labels:
+    app: schema-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schema-registry
+  template:
+    metadata:
+      labels:
+        app: schema-registry
+    spec:
+      containers:
+      - name: schema-registry
+        image: confluentinc/cp-schema-registry:8.1.0
+        ports:
+        - containerPort: 8082
+          name: http
+        env:
+        - name: SCHEMA_REGISTRY_HOST_NAME
+          value: "schema-registry"
+        - name: SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS
+          value: "kafka-0.kafka.default.svc.cluster.local:9092,kafka-1.kafka.default.svc.cluster.local:9092,kafka-2.kafka.default.svc.cluster.local:9092"
+        - name: SCHEMA_REGISTRY_LISTENERS
+          value: "http://0.0.0.0:8082"
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          echo "Environment variables:"
+          env | grep SCHEMA
+          echo "Testing Kafka connectivity:"
+          nc -zv kafka-0.kafka 9092 || echo "Kafka broker 0 not reachable"
+          echo "Starting Schema Registry..."
+          exec /etc/confluent/docker/run
