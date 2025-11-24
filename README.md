@@ -176,6 +176,8 @@ minikube start --kubernetes-version=v1.28.0 --cpus=6 --memory=10g
 
 cert-manager is required by the Flink Kubernetes Operator for webhook certificate management.
 
+**Note**: Flink Operator 1.13 [Flink Operator Quick Start](https://nightlies.apache.org/flink/flink-kubernetes-operator-docs-release-1.13/docs/try-flink-kubernetes-operator/quick-start/) instruct to install cert-manager v1.18.2 via YAML manifest. However, this causes a `CreateContainerConfigError` due to security context issues, when installing on Minikube. Installing from the full Jetstack Helm repo avoid this problem.
+
 Install cert-manager:
 ```bash
 helm install cert-manager jetstack/cert-manager \
@@ -281,18 +283,28 @@ The deployment should show `LIFECYCLE STATE` as `STABLE`.
 
 #### 4.2. Expose Flink UI for the Flink Deployment to the Host Machine
 
-Using `kubectl port-forward` is the simplest and most reliable method to expose the Flink UI of the session deployment to localhost.
+The Flink UI can be easily exposed on localhost using `kubectl port-forward`.
 
-**Note:** Note, each Flink Deployment creates a separate Flink cluster with a Job Manager.
-Each Flink Deployment's Flink UI has to be exposed to the host independently, each using a different port.
+**Note:** Note, each FlinkDeployment creates a separate Flink cluster with a Job Manager, with a separate ClusterIP Service named `<flink-deployment-name>-rest`
+for the Flink REST API and UI.
+If you have more than one  FlinkDeployment, you need to create a separate port-forward for each deployment.
 
 **Using the convenience script (recommended):**
 
 ```bash
-./scripts/port-forward-flink-ui.sh
+./scripts/port-forward-flink-ui.sh <deployment-name> <local-port> <service-port>
 ```
 
-This script automatically kills any existing port-forward processes for the Flink UI and starts a new one in the background.
+Where `<deployment-name>` is the name of the FlinkDeployment which deploys the specific cluster.
+
+The Session cluster deployed in this playground is called `session-deployment` and it creates  `session-deployment-rest` service on port `8081`. The full command to expose it's Flink UI is the following:
+
+```bash
+./scripts/port-forward-flink-ui.sh session-deployment 8081 8081
+```
+
+
+**Note**: this script automatically kills any existing port-forward processes for the Flink UI and starts a new one in the background.
 
 **Manual setup:**
 
@@ -541,7 +553,7 @@ The Kafka cluster is configured for experimental use with minimal resource requi
 - Auto topic creation: Enabled
 - Persistent storage: 10Gi per broker
 
-**Note:** These resource limits are intentionally minimal for development and testing purposes. For production workloads, you should increase resource allocations accordingly.
+**Note:** These resource limits are intentionally minimal because this playground is for development and testing purposes only.
 
 #### 5.6. Verifying the Kafka Cluster
 
@@ -578,7 +590,8 @@ kubectl exec -it kafka-0 -- kafka-console-consumer --topic test-topic --from-beg
 
 The Schema Registry is normally not exposed to the host. To be able to access the endpoint from the host a port-forward is required. 
 
-Check Schema Registry health:
+
+Check Schema Registry health (Schema Registry is not exposed on localhost, you can activate a temporary port-forward to test it):
 
 ```bash
 # Port-forward Schema Registry (if needed for direct access)
@@ -623,7 +636,7 @@ $FLINK_HOME/bin/sql-client.sh gateway --endpoint http://localhost:8083
 
 The `flink-with-dependencies:latest` custom image extends the official `flink:1.20.3-scala_2.12-java11` base image with additional dependencies required for working with Kafka and Avro data formats.
 
-**Note**: This custom image is used for both Flink Deployment and SQL Gateway. 
+This custom image is used for both Flink Deployment and SQL Gateway. 
 The SQL Gateway also needs these dependencies for planning and validation of SQL queries.
 
 ### Dependency Management Strategy
@@ -631,7 +644,8 @@ The SQL Gateway also needs these dependencies for planning and validation of SQL
 The image uses a **hybrid approach** to eliminate manual transitive dependency tracking:
 
 1. **SQL Connector Uber JARs**: Pre-bundled JARs that include all their transitive dependencies (e.g., `flink-sql-connector-kafka`)
-2. **Maven Auto-Resolution**: Automatically resolves complex transitive dependencies (e.g., Confluent Schema Registry client)
+2. **Uber JAR including transitive dependencies**: Use Maven to automatically resolve complex transitive dependencies (e.g., Confluent Schema Registry client)
+   and build a single Uber JAR.
 3. **Simple wget**: Direct download for standalone JARs without complex dependencies
 
 This approach ensures all required dependencies are included without manual tracking of transitive dependencies like Jackson libraries, while keeping the Docker image reasonably sized.
@@ -651,6 +665,9 @@ The Dockerfile uses a **multi-stage build**:
 
 ### How to Add New Dependencies
 
+If you need to add any new dependency, edit the  `Dockerfile` or the `pom.xml`, then rebuild the image and redeploy SQL Gateway and Session cluster, 
+using `rebuild-flink-image-and-redeploy.sh`  
+
 #### For Flink Connectors with Uber JARs
 
 If a SQL connector uber JAR exists (e.g., `flink-sql-connector-elasticsearch`):
@@ -661,22 +678,14 @@ If a SQL connector uber JAR exists (e.g., `flink-sql-connector-elasticsearch`):
    RUN wget -P /opt/flink/lib \
        https://repo.maven.apache.org/maven2/org/apache/flink/flink-sql-connector-NAME/VERSION/flink-sql-connector-NAME-VERSION.jar
    ```
-3. Rebuild: `./scripts/build-flink-image.sh`
+3. Rebuild the image and redeploy: `./rebuild-flink-image-and-redeploy.sh`
 
 #### For Dependencies with Complex Transitive Dependencies
 
 If you need a library with many transitive dependencies:
 
-1. Edit `flink-custom-image/pom.xml` and add the dependency:
-   ```xml
-   <dependency>
-       <groupId>com.example</groupId>
-       <artifactId>artifact-name</artifactId>
-       <version>1.0.0</version>
-   </dependency>
-   ```
-2. Rebuild: `./scripts/build-flink-image.sh`
-3. Maven will automatically resolve and include all transitive dependencies
+1. Edit `flink-custom-image/pom.xml` and add the dependency
+2. Rebuild the image and redeploy: `./rebuild-flink-image-and-redeploy.sh`
 
 #### For Standalone JARs
 
@@ -684,12 +693,7 @@ For simple JARs without transitive dependencies:
 
 1. Edit `flink-custom-image/Dockerfile`
 2. Add a wget command in the appropriate section
-3. Rebuild: `./scripts/build-flink-image.sh`
-
-### Using the new Custom Flink Image
-
-After making any changes to the `pom.xml` or the `Dockerfile` use the `rebuild-flink-image-and-redeploy.sh` script
-to rebuild the image and redeploy the SQL Gateway and Session cluster.
+3. Rebuild the image and redeploy: `./rebuild-flink-image-and-redeploy.sh`
 
 
 ---
@@ -697,8 +701,8 @@ to rebuild the image and redeploy the SQL Gateway and Session cluster.
 ## Modifying Resource Requirements
 
 Minikube requires a minimum amount of resources dedicated to Docker (6 CPU and 10 GiB by default).
-
 You can modify the dedicated resources by editing the `setup-flink-sql-playground.sh` script.
+
 Make sure you provide enough resources to spin up all the components of the playground.
 
 With the current deployment definitions:
@@ -726,18 +730,6 @@ Use the Helm installation method instead (shown above).
 This occurs when using Kubernetes v1.30+ with Flink operator v1.13.0. 
 Use Kubernetes v1.28.0 as shown in step 2.
 
-### Checking cluster info
-```bash
-# View nodes
-kubectl get nodes
-
-# View all resources
-kubectl get all -A
-
-# View Helm releases
-helm list -A
-```
-
 ### Troubleshooting Dependencies
 
 If you encounter `ClassNotFoundException` or `NoClassDefFoundError`:
@@ -745,12 +737,7 @@ If you encounter `ClassNotFoundException` or `NoClassDefFoundError`:
 1. Check if a SQL connector uber JAR exists for your connector
 2. For missing transitive dependencies, add the parent dependency to `flink-custom-image/pom.xml`
 3. Maven will automatically resolve all required transitive dependencies
-4. Rebuild and redeploy
-
-To see what Maven resolves:
-```bash
-mvn dependency:tree -f flink-custom-image/pom.xml
-```
+4. Rebuild the image and redeploy
 
 ---
 
@@ -758,7 +745,7 @@ mvn dependency:tree -f flink-custom-image/pom.xml
 
 - Schema Registry starts immediately, before Kafka brokers are available. This causes the Container to fail and restart a few times before it stabilizes. 
   Normally, this is not an issue.
-- Enable using checkpoints and savepoints
+- Enable/test checkpoints and savepoints
 
 ---
 
