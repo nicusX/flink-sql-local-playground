@@ -1,0 +1,140 @@
+# Flink SQL Gateway
+# This deployment provides a REST API for executing SQL queries against a Flink session cluster.
+# It must be configured to point to an existing Flink session cluster.
+# Note: the deployment assumes the session cluster is named "session-deployment"
+#
+# Uses custom Flink image (flink-with-dependencies:latest) that includes:
+#   - flink-connector-kafka (Kafka source/sink connector)
+#   - flink-avro (Avro format support)
+#   - flink-avro-confluent-registry (Schema Registry integration)
+#
+# These dependencies are required for the SQL Gateway to parse and validate
+# CREATE TABLE statements that use Kafka connectors and Avro format.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sql-gateway-config
+data:
+  # Flink configuration file for SQL Gateway
+  # Note: Flink 2.x uses config.yaml instead of flink-conf.yaml
+  config.yaml: |
+    # SQL Gateway REST endpoint configuration
+    sql-gateway.endpoint.rest.address: 0.0.0.0
+    sql-gateway.endpoint.rest.port: 8083
+    # Session timeout settings (in milliseconds)
+    sql-gateway.session.check-interval: 10000
+    sql-gateway.session.idle-timeout: 600000
+    # Flink cluster connection settings - note: target is not "remote"
+    execution.target: kubernetes-session
+    kubernetes.cluster-id: session-deployment
+    kubernetes.namespace: default
+    # JobManager connection settings
+    rest.address: session-deployment-rest
+    rest.port: 8081
+    # jobmanager.rpc.address: session-deployment
+    # jobmanager.rpc.port: 6123
+    # Timeout settings (in milliseconds)
+    web.timeout: 300000
+    rest.connection-timeout: 60000
+    rest.idleness-timeout: 300000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-sql-gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: flink-sql-gateway
+  template:
+    metadata:
+      labels:
+        app: flink-sql-gateway
+    spec:
+      # Use the same service account as the Flink cluster
+      serviceAccountName: flink
+      # InitContainer to copy configuration to the correct location
+      initContainers:
+      - name: config-init
+        image: flink-with-dependencies:2.1.1
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          # Copy Flink configuration from ConfigMap to conf directory
+          # Flink 2.x uses config.yaml instead of flink-conf.yaml
+          cp /opt/sql-gateway-config/config.yaml /opt/flink/conf/config.yaml
+          echo "Configuration copied successfully"
+          cat /opt/flink/conf/config.yaml
+        volumeMounts:
+        - name: sql-gateway-config
+          mountPath: /opt/sql-gateway-config
+        - name: flink-conf
+          mountPath: /opt/flink/conf
+      containers:
+      - name: sql-gateway
+        image: flink-with-dependencies:2.1.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8083
+          name: rest
+        command:
+        - /opt/flink/bin/sql-gateway.sh
+        - start-foreground
+        volumeMounts:
+        - name: flink-conf
+          mountPath: /opt/flink/conf
+      volumes:
+      - name: sql-gateway-config
+        configMap:
+          name: sql-gateway-config
+      - name: flink-conf
+        emptyDir: {}
+---
+# Service to expose the SQL Gateway REST API within the cluster
+# Use kubectl port-forward to access from your host machine:
+#   kubectl port-forward svc/flink-sql-gateway 8083:8083
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-sql-gateway
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8083
+    targetPort: 8083
+    name: rest
+  selector:
+    app: flink-sql-gateway
+---
+# Role required for the SQL Gateway to interact with the Flink session cluster    
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flink-sql-gateway
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["services", "pods", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+# RoleBinding to bind the Role to the Flink service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flink-sql-gateway
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: flink
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flink-sql-gateway
+
