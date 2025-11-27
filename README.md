@@ -228,16 +228,23 @@ kubectl exec deployment/flink-sql-gateway -- sh -c 'ls -lh /opt/flink/modified-*
 
 ### Build Custom Images
 
-Build Flink custom images with dependencies:
+Build Flink custom images with dependencies.
+
+Run the script:
+```bash
+./scripts/build-flink-image.sh --flink-version=<flink-version>
+```
+
+For example, for Flink 1.20.3:
+```bash
+./scripts/build-flink-image.sh --flink-version=1.20.3
+```
+
+If `--flink-version` is omitted, the default is `1.20.3`.
+
+***Verify images in minikube:***
 
 ```bash
-# Build for Flink 1.20.3 (default)
-./scripts/build-flink-image.sh
-
-# Build for Flink 2.1.1
-./scripts/build-flink-image.sh --flink-version=2.1.1
-
-# Verify images in minikube
 minikube image ls | grep flink-with-dependencies
 ```
 
@@ -246,12 +253,15 @@ minikube image ls | grep flink-with-dependencies
 After modifying Dockerfile or dependencies, rebuild the image and redeploy:
 
 ```bash
-# Rebuild and redeploy Flink 1.20.3
-./rebuild-flink-image-and-redeploy.sh
-
-# Rebuild and redeploy Flink 2.1.1
-./rebuild-flink-image-and-redeploy.sh --flink-version=2.1.1
+./rebuild-flink-image-and-redeploy.sh --flink-version=<flink-version>`
 ```
+
+For example, for Flink 1.20.3:
+```bash
+./rebuild-flink-image-and-redeploy.sh --flink-version=1.20.3
+```
+
+If `--flink-version` is omitted, the default is `1.20.3`.
 
 ### Service URLs
 
@@ -316,9 +326,9 @@ Use Kubernetes v1.28.0 as shown in step 2.
 If you encounter `ClassNotFoundException` or `NoClassDefFoundError`:
 
 1. Check if a SQL connector uber JAR exists for your connector
-2. For missing transitive dependencies, add the parent dependency to `flink-custom-image/pom.xml`
+2. For missing transitive dependencies, add the parent dependency to the version-specific `pom.xml` (e.g., `flink-versions/1.20.3/pom.xml`)
 3. Maven will automatically resolve all required transitive dependencies
-4. Rebuild the image and redeploy
+4. Rebuild the image and redeploy with the appropriate version: `./rebuild-flink-image-and-redeploy.sh --flink-version=1.20.3`
 
 ---
 

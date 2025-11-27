@@ -2,6 +2,12 @@
 
 As an alternative to using the `./setup-flink-sql-playground.sh` script, you can manually set up each component of the playground by following the step-by-step instructions in this chapter.
 
+#### Multi-version Support
+
+The playground supports multiple Flink versions (v1.20.3 or v2.1.1 at the moment).
+
+All configurations, k8s manifests, dockerfiles etc. which are version-specific are in the folders `./flink-version/<version>/`.
+
 ## 1. Setup the Minikube cluster
 
 ### 1.1. Create Kubernetes Cluster
@@ -68,7 +74,11 @@ You should see:
 
 The Flink session cluster uses a custom Docker image that extends the official Flink image with additional dependencies for Kafka and Avro support. See [Custom Flink Image Dependencies](./custom-flink-image-and-dependencies.md) for details on the included JARs.
 
-**Multiple Versions Available:**
+
+**Multiple Versions Available**
+
+The image tag matches the Flink version. For example:
+
 - Flink 1.20.3: `flink-with-dependencies:1.20.3` (Java 11)
 - Flink 2.1.1: `flink-with-dependencies:2.1.1` (Java 17)
 
@@ -93,15 +103,18 @@ The script will:
 If you prefer to build and load the image manually:
 
 ```bash
-# Build Flink 1.20.3
+docker build -t flink-with-dependencies:<flink-version> -f flink-versions/<flink-version>/Dockerfile flink-versions/<flink-version>
+minikube image load flink-with-dependencies:<flink-version>
+```
+
+For example, to build Flink 1.20.3:
+```bash
 docker build -t flink-with-dependencies:1.20.3 -f flink-versions/1.20.3/Dockerfile flink-versions/1.20.3
 minikube image load flink-with-dependencies:1.20.3
+```
 
-# Or build Flink 2.1.1
-docker build -t flink-with-dependencies:2.1.1 -f flink-versions/2.1.1/Dockerfile flink-versions/2.1.1
-minikube image load flink-with-dependencies:2.1.1
-
-# Verify the images are loaded
+***Verify the images are loaded:***
+```bash
 minikube image ls | grep flink-with-dependencies
 ```
 
@@ -114,7 +127,9 @@ In this section we deploy a Flink session cluster with standby task managers and
 It allows experimenting with interactive SQL statements.
 
 **Version-Specific Manifests:**
-Each Flink version has its own Kubernetes manifests that reference the correct image and flinkVersion:
+Each Flink version has its own Kubernetes manifests that reference the correct image and flinkVersion in the folder
+`./flink-version/<flink-version>/k8s/`:
+
 - Flink 1.20.3 manifests: `flink-versions/1.20.3/k8s/`
 - Flink 2.1.1 manifests: `flink-versions/2.1.1/k8s/`
 
@@ -123,11 +138,12 @@ Each Flink version has its own Kubernetes manifests that reference the correct i
 First, deploy a Flink session cluster that will accept SQL queries:
 
 ```bash
-# Deploy Flink 1.20.3 (default)
-kubectl apply -f flink-versions/1.20.3/k8s/session-deployment.yaml
+kubectl apply -f flink-versions/<flink-version>/k8s/session-deployment.yaml
+```
 
-# Or deploy Flink 2.1.1
-kubectl apply -f flink-versions/2.1.1/k8s/session-deployment.yaml
+For example, for Flink 1.20.3
+```bash
+kubectl apply -f flink-versions/1.20.3/k8s/session-deployment.yaml
 ```
 
 This creates a Flink cluster named `session-deployment` with no pre-loaded jobs, ready to accept job submissions via the SQL Gateway.
@@ -204,14 +220,11 @@ creating network isolation between your host machine and the cluster. This prese
 The Flink SQL Gateway provides a REST API for executing SQL queries against your Flink session cluster.
 This allows you to use the Flink SQL Client from your host machine to interact with the cluster.
 
-The SQL Gateway deployment is configured to connect to the `session-deployment` cluster. Deploy it with the version-specific manifest:
+The SQL Gateway deployment is configured to connect to the `session-deployment` cluster. Deploy it with the version-specific manifest in `flink-versions/<flink-version>/k8s/sql-gateway.yaml`.
 
+For example, for Flink 1.20.3:
 ```bash
-# Deploy SQL Gateway for Flink 1.20.3 (default)
 kubectl apply -f flink-versions/1.20.3/k8s/sql-gateway.yaml
-
-# Or deploy for Flink 2.1.1
-kubectl apply -f flink-versions/2.1.1/k8s/sql-gateway.yaml
 ```
 
 This creates:

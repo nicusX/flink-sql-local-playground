@@ -1,11 +1,11 @@
 # Deploys a Flink session cluster with 2 TaskManagers, each having 2 slots, statically allocated.
 # Useful to test using the SQL Gateway for interactive SQL queries.
 #
-# Uses custom Flink image (flink-with-dependencies:latest) that includes required connectors and formats.
+# Uses custom Flink image (flink-with-dependencies:1.20.3) that includes required connectors and formats.
 #
-# To build the custom image use: ./build-flink-image.sh
-# Or manually: docker build -t flink-with-dependencies:latest -f flink-custom-image/Dockerfile flink-custom-image
-#              minikube image load flink-with-dependencies:latest
+# To build the custom image use: ./scripts/build-flink-image.sh --flink-version=1.20.3
+# Or manually: docker build -t flink-with-dependencies:1.20.3 -f flink-versions/1.20.3/Dockerfile flink-versions/1.20.3
+#              minikube image load flink-with-dependencies:1.20.3
 
 apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
