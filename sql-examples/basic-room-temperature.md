@@ -57,7 +57,10 @@ CREATE TABLE temperature_kafkasink (
   -- Kafka value: Avro with Confluent Schema Registry
   'value.format' = 'avro-confluent',
   'value.avro-confluent.url' = 'http://schemaregistry:8082',
-  'value.fields-include' = 'EXCEPT_KEY'
+  'value.fields-include' = 'EXCEPT_KEY',
+
+  -- Required in Flink 2.x: unique transactional ID prefix for exactly-once semantics
+  'sink.transactional-id-prefix' = 'temperature-samples-sink'
 );
 
 -- Start job
@@ -75,6 +78,8 @@ FROM temperature_datagen;
 ### Read the temperatures from the topic, calculate the average temperature of each room over time, and write back to kafka
 
 ```sql
+
+
 -- Kafka source table
 CREATE TABLE temperature_kafkasource (
   room_id      INT,
@@ -139,12 +144,24 @@ CREATE TABLE room_temperatures_kafkasink (
   -- Value as Avro with Confluent Schema Registry
   'value.format' = 'avro-confluent',
   'value.avro-confluent.url' = 'http://schemaregistry:8082',
-  'value.fields-include' = 'ALL'
+  'value.fields-include' = 'EXCEPT_KEY',
+
+  -- Required in Flink 2.x: unique transactional ID prefix for exactly-once semantics
+  'sink.transactional-id-prefix' = 'room-temperatures-sink'
 );
 
 -- Start job
 INSERT INTO room_temperatures_kafkasink
 SELECT *
 FROM room_temperature_10s;
-
 ```
+
+Interactively query the Room Temperature view
+
+```sql
+SET 'table.dynamic-table-result-mode' = 'streaming';
+
+SELECT * FROM room_temperature_10s;
+```
+
+**Note**: results appear at the end of every 10 sec window.

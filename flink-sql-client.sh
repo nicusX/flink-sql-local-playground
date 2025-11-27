@@ -4,7 +4,6 @@
 
 set -e
 
-FLINK_VERSION="${FLINK_VERSION:=1.20.3}"
 SQL_GATEWAY_ENDPOINT="${SQL_GATEWAY_ENDPOINT:=http://localhost:8083}"
 
 # ----------------------------
@@ -13,10 +12,10 @@ SQL_GATEWAY_ENDPOINT="${SQL_GATEWAY_ENDPOINT:=http://localhost:8083}"
 
 if [ -z "$FLINK_HOME" ]; then
   echo "ERROR: FLINK_HOME is not set."
-  echo "Please download and install Apache Flink $FLINK_VERSION locally,"
+  echo "Please download and install Apache Flink locally, with version matching the playground's Flink version,"
   echo "then set the FLINK_HOME environment variable, e.g.:"
   echo
-  echo "  export FLINK_HOME=/path/to/flink-$FLINK_VERSION"
+  echo "  export FLINK_HOME=/path/to/flink/distribution"
   echo
   exit 1
 fi
@@ -29,14 +28,7 @@ SQL_CLIENT="$FLINK_HOME/bin/sql-client.sh"
 
 if [ ! -x "$SQL_CLIENT" ]; then
   echo "ERROR: $SQL_CLIENT not found or not executable."
-  echo "Please ensure Apache Flink $FLINK_VERSION is installed locally and FLINK_HOME is correct."
-  echo
-  echo "Download Flink $FLINK_VERSION from:"
-  echo "  https://www.apache.org/dyn/closer.lua/flink/flink-$FLINK_VERSION/"
-  echo
-  echo "Then set FLINK_HOME, for example:"
-  echo "  export FLINK_HOME=/path/to/flink-$FLINK_VERSION"
-  echo
+  echo "Please ensure Apache Flink is installed locally and FLINK_HOME is correct."
   exit 1
 fi
 
@@ -44,7 +36,7 @@ fi
 # Run SQL Client with extra args
 # ----------------------------
 
-echo "Starting Flink SQL Client (Flink $FLINK_VERSION)"
+echo "Starting Flink SQL Client from $FLINK_HOME"
 echo "Gateway endpoint: $SQL_GATEWAY_ENDPOINT"
 echo "Passing extra args: $*"
 echo

@@ -2,6 +2,44 @@
 
 set -e  # Exit on error
 
+# Default Flink version
+FLINK_VERSION="1.20.3"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --flink-version=*)
+      FLINK_VERSION="${1#*=}"
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--flink-version=VERSION]"
+      echo "Example: $0 --flink-version=2.1.1"
+      exit 1
+      ;;
+  esac
+done
+
+# Validate Flink version exists
+VERSION_DIR="flink-versions/${FLINK_VERSION}"
+if [ ! -d "$VERSION_DIR" ]; then
+    echo "Error: Unsupported Flink version: ${FLINK_VERSION}"
+    echo ""
+    echo "Available versions:"
+    ls -1 flink-versions/ 2>/dev/null || echo "  (none found)"
+    exit 1
+fi
+
+# Load version-specific configuration
+CONFIG_FILE="${VERSION_DIR}/config.sh"
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file not found: ${CONFIG_FILE}"
+    exit 1
+fi
+
+source "$CONFIG_FILE"
+
 # Kubernetes cluster configuration
 K8S_VERSION="v1.28.0"
 K8S_CPUS=6
@@ -11,6 +49,7 @@ K8S_MEMORY=10 # in GB
 echo "===================================="
 echo "Flink SQL Playground Setup"
 echo "===================================="
+echo "Flink Version: ${FLINK_VERSION}"
 echo ""
 
 # Colors for output
@@ -104,7 +143,7 @@ echo ""
 
 # 2. Build custom Flink image
 echo "Step 2: Building custom Flink image with dependencies..."
-./scripts/build-flink-image.sh
+./scripts/build-flink-image.sh --flink-version=${FLINK_VERSION}
 echo ""
 
 # 3. Check/Install cert-manager
@@ -180,7 +219,7 @@ if kubectl get flinkdeployment session-deployment &> /dev/null; then
     print_success "Flink session deployment already exists"
 else
     print_info "Deploying Flink session cluster..."
-    kubectl apply -f k8s/session-deployment.yaml
+    kubectl apply -f "${VERSION_DIR}/k8s/session-deployment.yaml"
     print_success "Flink session deployment created"
 fi
 
@@ -196,7 +235,7 @@ if kubectl get deployment flink-sql-gateway &> /dev/null; then
     print_success "SQL Gateway is already deployed"
 else
     print_info "Deploying SQL Gateway..."
-    kubectl apply -f k8s/sql-gateway.yaml
+    kubectl apply -f "${VERSION_DIR}/k8s/sql-gateway.yaml"
     print_success "SQL Gateway deployment created"
 fi
 
